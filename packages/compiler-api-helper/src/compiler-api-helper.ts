@@ -15,7 +15,17 @@ import {
   dangerouslyTypeToTypes,
 } from './extract'
 import { primitive, special } from './type-object'
-import { ok, ng, switchExpression, isOk, isNg } from './util'
+import {
+  ok,
+  ng,
+  switchExpression,
+  isOk,
+  isNg,
+  getNodeSymbol,
+  getSourceFileLocation,
+  filterUndefined,
+  getDescendantAtPosition,
+} from './util'
 
 type TypeDeclaration = { typeName: string | undefined; type: to.TypeObject }
 type TypeHasCallSignature = {
@@ -23,13 +33,18 @@ type TypeHasCallSignature = {
 } & ts.Type
 
 export class CompilerApiHelper {
+  #ts: typeof ts
   #program: ts.Program
   #typeChecker: ts.TypeChecker
   #objectPropsStore: {
-    [K: string]: ts.Type
+    [K: string]: {
+      type: ts.Type
+      locations: to.SourceFileLocation[]
+    }
   }
 
-  public constructor(program: ts.Program) {
+  public constructor(program: ts.Program, _ts: typeof ts) {
+    this.#ts = _ts
     this.#program = program
     this.#typeChecker = this.#program.getTypeChecker()
     this.#objectPropsStore = {}
@@ -250,19 +265,20 @@ export class CompilerApiHelper {
     storeKey: string,
   ): { propName: string; type: to.TypeObject }[] {
     const storedTsType = this.#objectPropsStore[storeKey]
-    if (storedTsType === undefined) {
+    if (storedTsType?.type === undefined) {
       return [
         {
           propName: 'unknown',
           type: {
             __type: 'UnsupportedTO',
             kind: 'prop',
+            locations: storedTsType?.locations ?? [],
           },
         },
       ]
     }
 
-    return this.#typeChecker.getPropertiesOfType(storedTsType).map(
+    return this.#typeChecker.getPropertiesOfType(storedTsType.type).map(
       (
         symbol,
       ): {
@@ -289,11 +305,14 @@ export class CompilerApiHelper {
           ? dangerouslyDeclarationToType(symbol.valueDeclaration)
           : undefined
 
+        const typeNodeLocations = this._getLocations(
+          this._getSymbolFromNode(typeNode),
+        )
+
         const declare = (symbol.declarations ?? [])[0]
         const type = declare
           ? this.#typeChecker.getTypeOfSymbolAtLocation(symbol, declare)
           : undefined
-
         return {
           propName:
             dangerouslySymbolToEscapedName(symbol) ??
@@ -306,30 +325,83 @@ export class CompilerApiHelper {
                     this.#typeChecker.getTypeFromTypeNode(typeNode),
                   ),
                   child: this.#extractArrayTFromTypeNode(typeNode),
+                  locations: typeNodeLocations,
                 }
               : type
                 ? this.#isCallable(type)
-                  ? this._convertTypeFromCallableSignature(
-                      type.getCallSignatures()[0],
-                    )
-                  : this._convertType(type)
+                  ? {
+                      ...this._convertTypeFromCallableSignature(
+                        type.getCallSignatures()[0],
+                      ),
+                      locations: this._getLocations(type.getSymbol()),
+                    }
+                  : this._convertType(type, declare)
                 : {
                     __type: 'UnsupportedTO',
                     kind: 'prop',
+                    locations: [],
                   },
         }
       },
     )
   }
 
-  public convertType(type: ts.Type): to.TypeObject {
-    this.#objectPropsStore = {}
-    return this._convertType(type)
+  _getSymbolFromNode(node?: ts.Node): ts.Symbol | undefined {
+    return node
+      ? this.#typeChecker.getSymbolAtLocation(node) ??
+          getNodeSymbol(this.#typeChecker, node)
+      : undefined
   }
 
-  public _convertType(type: ts.Type): to.TypeObject {
+  _getLocations(symbol?: ts.Symbol) {
+    const originalSymbol = symbol
+    return filterUndefined(
+      symbol
+        ?.getDeclarations()
+        ?.map((declaration) => {
+          const sourceFile = declaration.getSourceFile()
+          const location = getSourceFileLocation(sourceFile, declaration)
+          return location
+        })
+        .filter((location) => {
+          if (!location) return false
+          const sourceFile = this.#program.getSourceFile(location.fileName)
+          if (!sourceFile) return false
+
+          return (
+            getNodeSymbol(
+              this.#typeChecker,
+              getDescendantAtPosition(
+                this.#ts,
+                sourceFile,
+                sourceFile.getPositionOfLineAndCharacter(
+                  location.range.start.line,
+                  location.range.start.character,
+                ),
+              ),
+            ) === originalSymbol
+          )
+        }) ?? [],
+    )
+  }
+
+  public convertType(maybeNode: ts.Node): to.TypeObject {
+    this.#objectPropsStore = {}
+    const type = this.#typeChecker.getTypeAtLocation(maybeNode)
+    return this._convertType(type, maybeNode)
+  }
+
+  public _convertType(type: ts.Type, maybeNode?: ts.Node): to.TypeObject {
+    const symbol = maybeNode
+      ? this.#typeChecker.getSymbolAtLocation(maybeNode) ??
+        getNodeSymbol(this.#typeChecker, maybeNode)
+      : undefined
+
+    const locations = this._getLocations(symbol)
+
     return switchExpression({
       type,
+      symbol,
       typeNode: dangerouslyTypeToNode(type),
       typeText: this.#typeToString(type),
     })
@@ -340,11 +412,13 @@ export class CompilerApiHelper {
           typeof type.symbol !== 'undefined', // only enum declare have symbol
         ({ type, typeText }) => {
           const enums: to.EnumTO['enums'] = []
+
           type.symbol.exports?.forEach((symbol, key) => {
             const valueDeclare = symbol.valueDeclaration
             if (valueDeclare) {
               const valType = this._convertType(
                 this.#typeChecker.getTypeAtLocation(valueDeclare),
+                valueDeclare,
               )
 
               if (valType.__type === 'LiteralTO') {
@@ -360,6 +434,7 @@ export class CompilerApiHelper {
             __type: 'EnumTO',
             typeName: typeText,
             enums,
+            locations,
           }
         },
       )
@@ -371,6 +446,7 @@ export class CompilerApiHelper {
           unions: dangerouslyTypeToTypes(type).map((type) =>
             this._convertType(type),
           ) as ArrayAtLeastN<to.TypeObject, 2>,
+          locations,
         }),
       )
       .case<to.UnsupportedTO>(
@@ -379,6 +455,7 @@ export class CompilerApiHelper {
           __type: 'UnsupportedTO',
           kind: 'unresolvedTypeParameter',
           typeText,
+          locations,
         }),
       )
       .case<to.TupleTO, { typeNode: ts.TupleTypeNode }>(
@@ -388,8 +465,12 @@ export class CompilerApiHelper {
           __type: 'TupleTO',
           typeName: typeText,
           items: typeNode.elements.map((typeNode) =>
-            this._convertType(this.#typeChecker.getTypeFromTypeNode(typeNode)),
+            this._convertType(
+              this.#typeChecker.getTypeFromTypeNode(typeNode),
+              typeNode,
+            ),
           ),
+          locations,
         }),
       )
       .case<to.LiteralTO>(
@@ -397,6 +478,7 @@ export class CompilerApiHelper {
         ({ type }) => ({
           __type: 'LiteralTO',
           value: type.isLiteral() ? type.value : undefined,
+          locations,
         }),
       )
       .case<to.LiteralTO>(
@@ -404,63 +486,106 @@ export class CompilerApiHelper {
         ({ typeText }) => ({
           __type: 'LiteralTO',
           value: typeText === 'true' ? true : false,
+          locations,
         }),
       )
       .case<to.PrimitiveTO>(
         ({ typeText }) => typeText === 'string',
-        () => primitive('string'),
+        () => ({
+          ...primitive('string'),
+          locations,
+        }),
       )
       .case<to.PrimitiveTO>(
         ({ typeText }) => typeText === 'number',
-        () => primitive('number'),
+        () => ({
+          ...primitive('number'),
+          locations,
+        }),
       )
       .case<to.PrimitiveTO>(
         ({ typeText }) => typeText === 'bigint',
-        () => primitive('bigint'),
+        () => ({
+          ...primitive('bigint'),
+          locations,
+        }),
       )
       .case<to.PrimitiveTO>(
         ({ typeText }) => typeText === 'boolean',
-        () => primitive('boolean'),
+        () => ({
+          ...primitive('boolean'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'null',
-        () => special('null'),
+        () => ({
+          ...special('null'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'undefined',
-        () => special('undefined'),
+        () => ({
+          ...special('undefined'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'void',
-        () => special('void'),
+        () => ({
+          ...special('void'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'any',
-        () => special('any'),
+        () => ({
+          ...special('any'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'unknown',
-        () => special('unknown'),
+        () => ({
+          ...special('unknown'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'never',
-        () => special('never'),
+        () => ({
+          ...special('never'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'Date',
-        () => special('Date'),
+        () => ({
+          ...special('Date'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'unique symbol',
-        () => special('unique symbol'),
+        () => ({
+          ...special('unique symbol'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'Symbol',
-        () => special('Symbol'),
+        () => ({
+          ...special('Symbol'),
+          locations,
+        }),
       )
       .case<to.SpecialTO>(
         ({ typeText }) => typeText === 'symbol',
-        () => special('Symbol'),
+        () => ({
+          ...special('Symbol'),
+          locations,
+        }),
       )
       .case<to.ArrayTO>(
         ({ type, typeText }) =>
@@ -470,17 +595,26 @@ export class CompilerApiHelper {
           __type: 'ArrayTO',
           typeName: typeText,
           child: ((): to.TypeObject => {
-            const resultT = this.#extractArrayT(type)
+            const resultT = this.#extractArrayT(type, maybeNode)
             return isOk(resultT)
               ? resultT.ok
-              : ({ __type: 'UnsupportedTO', kind: 'arrayT' } as const)
+              : ({
+                  __type: 'UnsupportedTO',
+                  kind: 'arrayT',
+                  locations: [],
+                } as const)
           })(),
+          locations,
         }),
       )
       .case<to.CallableTO, { type: TypeHasCallSignature }>(
         ({ type }) => this.#isCallable(type),
-        ({ type }) =>
-          this._convertTypeFromCallableSignature(type.getCallSignatures()[0]),
+        ({ type }) => ({
+          ...this._convertTypeFromCallableSignature(
+            type.getCallSignatures()[0],
+          ),
+          locations,
+        }),
       )
       .case<to.PromiseTO>(
         ({ type }) => dangerouslySymbolToEscapedName(type.symbol) === 'Promise',
@@ -491,11 +625,13 @@ export class CompilerApiHelper {
             : {
                 __type: 'UnsupportedTO',
                 kind: 'promiseNoArgument',
+                locations,
               }
 
           return {
             __type: 'PromiseTO',
             child: typeArg,
+            locations,
           }
         },
       )
@@ -509,32 +645,33 @@ export class CompilerApiHelper {
             : {
                 __type: 'UnsupportedTO',
                 kind: 'promiseNoArgument',
+                locations,
               }
 
           return {
             __type: 'PromiseLikeTO',
             child: typeArg,
+            locations,
           }
         },
       )
       .case<to.ObjectTO>(
         ({ type }) => this.#typeChecker.getPropertiesOfType(type).length !== 0,
-        ({ type }) => {
-          return this.#createObjectType(type)
-        },
+        ({ type }) => this.#createObjectType(type, locations),
       )
       .default<to.UnsupportedTO>(({ typeText }) => {
         return {
           __type: 'UnsupportedTO',
           kind: 'convert',
           typeText,
+          locations,
         }
       })
   }
 
   public _convertTypeFromCallableSignature(
     signature: ts.Signature,
-  ): to.CallableTO {
+  ): Omit<to.CallableTO, 'locations'> {
     return {
       __type: 'CallableTO',
       argTypes: signature
@@ -550,6 +687,7 @@ export class CompilerApiHelper {
                     argSymbol,
                     declare,
                   ),
+                  declare,
                 ),
               }
             : undefined
@@ -570,25 +708,34 @@ export class CompilerApiHelper {
     return nodes
   }
 
-  #createObjectType(tsType: ts.Type): to.ObjectTO {
+  #createObjectType(
+    tsType: ts.Type,
+    locations: to.SourceFileLocation[],
+  ): to.ObjectTO {
     const typeName = this.#typeToString(tsType)
     const key = generateUuid()
-    this.#objectPropsStore[key] = tsType
+    this.#objectPropsStore[key] = {
+      type: tsType,
+      locations,
+    }
     return {
       __type: 'ObjectTO',
       typeName,
       storeKey: key,
+      locations,
     }
   }
 
   #extractArrayTFromTypeNode(typeNode: ts.ArrayTypeNode): to.TypeObject {
     return this._convertType(
       this.#typeChecker.getTypeAtLocation(typeNode.elementType),
+      typeNode.elementType,
     )
   }
 
   #extractArrayT(
     type: ts.Type,
+    maybeNode?: ts.Node,
   ): Result<
     to.TypeObject,
     { reason: 'node_not_defined' | 'not_array_type_node' | 'cannot_resolve' }
@@ -601,7 +748,6 @@ export class CompilerApiHelper {
       return ok(this._convertType(maybeArrayT))
     }
 
-    const maybeNode = dangerouslyTypeToNode(type)
     if (!maybeNode) {
       return ng({
         reason: 'node_not_defined',

@@ -17,7 +17,8 @@ export class CompilerHandler {
     private ts: __ts | undefined,
   ) {
     this.checker = this.program.getTypeChecker()
-    this.helper = new CompilerApiHelper(this.program)
+    // @ts-expect-error ts
+    this.helper = new CompilerApiHelper(this.program, this.ts)
   }
 
   public updateProgram(program: ts.Program): void {
@@ -82,7 +83,7 @@ export class CompilerHandler {
 
       return [
         escapedName ? unescapeLeadingUnderscores(escapedName) : undefined,
-        this.helper.convertType(tsType),
+        this.helper.convertType(maybeNode),
       ]
     } catch (error) {
       const message = error instanceof Error ? error.message : undefined

@@ -1,3 +1,6 @@
+import type * as ts from 'typescript'
+import type { SourceFileLocation } from './type-object'
+
 export type Result<S, T> = ResultOk<S> | ResultNg<T>
 export type ResultOk<T> = {
   __type: 'ok'
@@ -118,4 +121,179 @@ export function assertMinLength<T, L extends number>(
     )
   }
   return arr as unknown as ArrayAtLeastN<T, L>
+}
+
+/**
+ * @internal
+ */
+export type SymbolInternal = ts.Symbol & {
+  checkFlags: number
+  type?: ts.Type
+  parent?: SymbolInternal
+  target?: SymbolInternal
+}
+
+export function getNodeSymbol(
+  typeChecker: ts.TypeChecker,
+  node?: ts.Node,
+): ts.Symbol | undefined {
+  return node
+    ? (node as ts.Node & { symbol?: SymbolInternal }).symbol ??
+        typeChecker.getSymbolAtLocation(node)
+    : undefined
+}
+
+export function isValidType(type: ts.Type): boolean {
+  return (
+    !('intrinsicName' in type) ||
+    (type as unknown as { intrinsicName: string }).intrinsicName !== 'error'
+  )
+}
+
+export function getSymbolDeclaration(
+  symbol?: ts.Symbol,
+): ts.Declaration | undefined {
+  return symbol
+    ? symbol.valueDeclaration ?? symbol.declarations?.[0]
+    : undefined
+}
+
+export function getSymbolType(
+  typeChecker: ts.TypeChecker,
+  symbol: ts.Symbol,
+  location?: ts.Node,
+) {
+  if (location) {
+    const type = typeChecker.getTypeOfSymbolAtLocation(symbol, location)
+
+    if (isValidType(type)) {
+      return type
+    }
+  }
+
+  const declaration = getSymbolDeclaration(symbol)
+  if (declaration) {
+    const type = typeChecker.getTypeOfSymbolAtLocation(symbol, declaration)
+    if (isValidType(type)) {
+      return type
+    }
+  }
+
+  const symbolType = typeChecker.getDeclaredTypeOfSymbol(symbol)
+  if (isValidType(symbolType)) {
+    return symbolType
+  }
+
+  const fallbackType = typeChecker.getTypeOfSymbolAtLocation(symbol, {
+    parent: {},
+  } as unknown as ts.Node)
+  return fallbackType
+}
+
+export function getSourceFileLocation(
+  sourceFile: ts.SourceFile,
+  node: ts.Node,
+): SourceFileLocation | undefined {
+  const startPos = node.getStart()
+  const endPos = node.getEnd()
+
+  if (startPos < 0 || endPos < 0) {
+    return undefined
+  }
+
+  const start = sourceFile.getLineAndCharacterOfPosition(startPos)
+  const end = sourceFile.getLineAndCharacterOfPosition(endPos)
+
+  return {
+    fileName: sourceFile.fileName,
+    range: {
+      start,
+      end,
+    },
+  }
+}
+
+/**
+ * @internal
+ */
+export type NodeWithJsDoc = ts.Node & { jsDoc?: ts.Node[] | undefined }
+
+export function getDescendantAtPosition(
+  _ts: typeof ts,
+  sourceFile: ts.SourceFile,
+  position: number,
+) {
+  return getDescendantAtRange(_ts, sourceFile, [position, position])
+}
+
+/**
+ * https://github.com/dsherret/ts-ast-viewer/blob/b4be8f2234a1c3c099296bf5d0ad6cc14107367c/site/src/compiler/getDescendantAtRange.ts
+ */
+export function getDescendantAtRange(
+  _ts: typeof ts,
+  sourceFile: ts.SourceFile,
+  range: [number, number],
+) {
+  let bestMatch: { node: ts.Node; start: number } = {
+    node: sourceFile,
+    start: sourceFile.getStart(sourceFile),
+  }
+
+  searchDescendants(sourceFile)
+  return bestMatch.node
+
+  function searchDescendants(node: ts.Node) {
+    const children: ts.Node[] = []
+    node.forEachChild((child) => {
+      children.push(child)
+      return undefined
+    })
+
+    for (const child of children) {
+      if (child.kind !== _ts.SyntaxKind.SyntaxList) {
+        if (isBeforeRange(child.end)) {
+          continue
+        }
+
+        const childStart = getStartSafe(child, sourceFile)
+
+        if (isAfterRange(childStart)) {
+          return
+        }
+
+        const isEndOfFileToken = child.kind === _ts.SyntaxKind.EndOfFileToken
+        const hasSameStart =
+          bestMatch.start === childStart && range[0] === childStart
+        if (!isEndOfFileToken && !hasSameStart) {
+          bestMatch = { node: child, start: childStart }
+        }
+      }
+
+      searchDescendants(child)
+    }
+  }
+
+  function isBeforeRange(pos: number) {
+    return pos < range[0]
+  }
+
+  function isAfterRange(nodeEnd: number) {
+    return nodeEnd >= range[0] && nodeEnd > range[1]
+  }
+
+  function getStartSafe(node: ts.Node, sourceFile: ts.SourceFile) {
+    // workaround for compiler api bug with getStart(sourceFile, true) (see PR #35029 in typescript repo)
+    const jsDocs = (node as NodeWithJsDoc).jsDoc
+    if (jsDocs && jsDocs.length > 0 && jsDocs[0]) {
+      return jsDocs[0].getStart(sourceFile)
+    }
+    return node.getStart(sourceFile)
+  }
+}
+
+/**
+ * @internal
+ */
+export function filterUndefined<T>(arr: T[]): Exclude<T, undefined>[] {
+  return arr.filter((x) => x !== undefined) as Exclude<T, undefined>[]
 }

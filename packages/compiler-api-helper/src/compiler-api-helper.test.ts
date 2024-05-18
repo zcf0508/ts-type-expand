@@ -4,11 +4,12 @@ import { CompilerApiHelper } from '~/compiler-api-helper'
 import { isOk } from '~/util'
 import { createProgram } from './test-helpers/program'
 import { describe, it, expect } from 'vitest'
+import * as ts from 'typescript'
 
 const absolutePath = (path: string) => resolve(__dirname, '../../example', path)
 
 const program = createProgram(absolutePath('./tsconfig.json'))
-const helper = new CompilerApiHelper(program)
+const helper = new CompilerApiHelper(program, ts)
 
 describe('convertType', () => {
   describe('patterns', () => {
@@ -34,15 +35,17 @@ describe('convertType', () => {
       it('value declaration for literal should be resolved.', () => {
         const { literalValue } = getTypes()
 
-        expect<{ typeName: string | undefined; type: TypeObject }>(
-          literalValue,
-        ).toStrictEqual({
-          type: {
-            __type: 'LiteralTO',
-            value: 'hello',
-          },
-          typeName: 'value',
-        })
+        expect<{ typeName: string | undefined; type: TypeObject }>(literalValue)
+          .toMatchInlineSnapshot(`
+          {
+            "type": {
+              "__type": "LiteralTO",
+              "locations": [],
+              "value": "hello",
+            },
+            "typeName": "value",
+          }
+        `)
       })
 
       it('value declaration for function should be resolved.', () => {
@@ -50,20 +53,25 @@ describe('convertType', () => {
 
         expect<{ typeName: string | undefined; type: TypeObject }>(
           functionValue,
-        ).toStrictEqual({
-          typeName: 'asyncFunc',
-          type: {
-            __type: 'CallableTO',
-            argTypes: [],
-            returnType: {
-              __type: 'PromiseTO',
-              child: {
-                __type: 'SpecialTO',
-                kind: 'void',
+        ).toMatchInlineSnapshot(`
+          {
+            "type": {
+              "__type": "CallableTO",
+              "argTypes": [],
+              "locations": [],
+              "returnType": {
+                "__type": "PromiseTO",
+                "child": {
+                  "__type": "SpecialTO",
+                  "kind": "void",
+                  "locations": [],
+                },
+                "locations": [],
               },
             },
-          },
-        })
+            "typeName": "asyncFunc",
+          }
+        `)
       })
     })
 
@@ -85,17 +93,33 @@ describe('convertType', () => {
         return
       }
 
-      expect(
-        helper.getObjectProps(reExportedValue.type.storeKey),
-      ).toStrictEqual([
-        {
-          propName: 'name',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
+      expect(helper.getObjectProps(reExportedValue.type.storeKey))
+        .toMatchInlineSnapshot(`
+        [
+          {
+            "propName": "name",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [
+                {
+                  "fileName": "F:/ts-type-expand/packages/example/src/patterns/re-export/original.ts",
+                  "range": {
+                    "end": {
+                      "character": 14,
+                      "line": 1,
+                    },
+                    "start": {
+                      "character": 2,
+                      "line": 1,
+                    },
+                  },
+                },
+              ],
+            },
           },
-        },
-      ])
+        ]
+      `)
     })
   })
 
@@ -112,15 +136,21 @@ describe('convertType', () => {
       const types = typesResult.ok
       expect(types.length).toStrictEqual(2)
 
-      expect(types[0]?.type).toStrictEqual({
-        __type: 'PrimitiveTO',
-        kind: 'string',
-      })
+      expect(types[0]?.type).toMatchInlineSnapshot(`
+        {
+          "__type": "PrimitiveTO",
+          "kind": "string",
+          "locations": [],
+        }
+      `)
 
-      expect(types[1]?.type).toStrictEqual({
-        __type: 'PrimitiveTO',
-        kind: 'number',
-      })
+      expect(types[1]?.type).toMatchInlineSnapshot(`
+        {
+          "__type": "PrimitiveTO",
+          "kind": "number",
+          "locations": [],
+        }
+      `)
     })
 
     describe('special', () => {
@@ -146,18 +176,24 @@ describe('convertType', () => {
 
       it('undefined should be resolved', () => {
         const { undefinedType } = getTypes()
-        expect(undefinedType.type).toStrictEqual({
-          __type: 'SpecialTO',
-          kind: 'undefined',
-        })
+        expect(undefinedType.type).toMatchInlineSnapshot(`
+          {
+            "__type": "SpecialTO",
+            "kind": "undefined",
+            "locations": [],
+          }
+        `)
       })
 
       it('undefined should be resolved', () => {
         const { nullType } = getTypes()
-        expect(nullType.type).toStrictEqual({
-          __type: 'SpecialTO',
-          kind: 'null',
-        })
+        expect(nullType.type).toMatchInlineSnapshot(`
+          {
+            "__type": "SpecialTO",
+            "kind": "null",
+            "locations": [],
+          }
+        `)
       })
     })
 
@@ -173,20 +209,29 @@ describe('convertType', () => {
       const types = typesResult.ok
       expect(types.length).toStrictEqual(3)
 
-      expect(types[0]?.type).toStrictEqual({
-        __type: 'LiteralTO',
-        value: 'hello',
-      })
+      expect(types[0]?.type).toMatchInlineSnapshot(`
+        {
+          "__type": "LiteralTO",
+          "locations": [],
+          "value": "hello",
+        }
+      `)
 
-      expect(types[1]?.type).toStrictEqual({
-        __type: 'LiteralTO',
-        value: 20,
-      })
+      expect(types[1]?.type).toMatchInlineSnapshot(`
+        {
+          "__type": "LiteralTO",
+          "locations": [],
+          "value": 20,
+        }
+      `)
 
-      expect(types[2]?.type).toStrictEqual({
-        __type: 'LiteralTO',
-        value: true,
-      })
+      expect(types[2]?.type).toMatchInlineSnapshot(`
+        {
+          "__type": "LiteralTO",
+          "locations": [],
+          "value": true,
+        }
+      `)
     })
 
     it('union type should be resolved.', () => {
@@ -206,20 +251,25 @@ describe('convertType', () => {
         return
       }
 
-      expect(type0.type).toStrictEqual({
-        __type: 'UnionTO',
-        typeName: 'StrOrNumber',
-        unions: [
-          {
-            __type: 'PrimitiveTO',
-            kind: 'string',
-          },
-          {
-            __type: 'PrimitiveTO',
-            kind: 'number',
-          },
-        ],
-      })
+      expect(type0.type).toMatchInlineSnapshot(`
+        {
+          "__type": "UnionTO",
+          "locations": [],
+          "typeName": "StrOrNumber",
+          "unions": [
+            {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [],
+            },
+            {
+              "__type": "PrimitiveTO",
+              "kind": "number",
+              "locations": [],
+            },
+          ],
+        }
+      `)
     })
 
     describe('enum', () => {
@@ -251,72 +301,171 @@ describe('convertType', () => {
 
       it('basic enum should be resolved.', () => {
         const { basicEnum } = getTypes()
-        expect(basicEnum.type).toStrictEqual({
-          __type: 'EnumTO',
-          typeName: 'BasicEnum',
-          enums: [
-            {
-              name: 'Red',
-              type: {
-                __type: 'LiteralTO',
-                value: 0,
+        expect(basicEnum.type).toMatchInlineSnapshot(`
+          {
+            "__type": "EnumTO",
+            "enums": [
+              {
+                "name": "Red",
+                "type": {
+                  "__type": "LiteralTO",
+                  "locations": [
+                    {
+                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "range": {
+                        "end": {
+                          "character": 5,
+                          "line": 1,
+                        },
+                        "start": {
+                          "character": 2,
+                          "line": 1,
+                        },
+                      },
+                    },
+                  ],
+                  "value": 0,
+                },
               },
-            },
-            {
-              name: 'Blue',
-              type: {
-                __type: 'LiteralTO',
-                value: 1,
+              {
+                "name": "Blue",
+                "type": {
+                  "__type": "LiteralTO",
+                  "locations": [
+                    {
+                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "range": {
+                        "end": {
+                          "character": 6,
+                          "line": 2,
+                        },
+                        "start": {
+                          "character": 2,
+                          "line": 2,
+                        },
+                      },
+                    },
+                  ],
+                  "value": 1,
+                },
               },
-            },
-            {
-              name: 'Green',
-              type: {
-                __type: 'LiteralTO',
-                value: 2,
+              {
+                "name": "Green",
+                "type": {
+                  "__type": "LiteralTO",
+                  "locations": [
+                    {
+                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "range": {
+                        "end": {
+                          "character": 7,
+                          "line": 3,
+                        },
+                        "start": {
+                          "character": 2,
+                          "line": 3,
+                        },
+                      },
+                    },
+                  ],
+                  "value": 2,
+                },
               },
-            },
-          ],
-        })
+            ],
+            "locations": [],
+            "typeName": "BasicEnum",
+          }
+        `)
       })
 
       it('enum with value should be resolved.', () => {
         const { enumWithValue } = getTypes()
-        expect(enumWithValue.type).toStrictEqual({
-          __type: 'EnumTO',
-          typeName: 'EnumWithValue',
-          enums: [
-            {
-              name: 'Red',
-              type: {
-                __type: 'LiteralTO',
-                value: 'red',
+        expect(enumWithValue.type).toMatchInlineSnapshot(`
+          {
+            "__type": "EnumTO",
+            "enums": [
+              {
+                "name": "Red",
+                "type": {
+                  "__type": "LiteralTO",
+                  "locations": [
+                    {
+                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "range": {
+                        "end": {
+                          "character": 13,
+                          "line": 6,
+                        },
+                        "start": {
+                          "character": 2,
+                          "line": 6,
+                        },
+                      },
+                    },
+                  ],
+                  "value": "red",
+                },
               },
-            },
-            {
-              name: 'Blue',
-              type: {
-                __type: 'LiteralTO',
-                value: 'blue',
+              {
+                "name": "Blue",
+                "type": {
+                  "__type": "LiteralTO",
+                  "locations": [
+                    {
+                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "range": {
+                        "end": {
+                          "character": 15,
+                          "line": 7,
+                        },
+                        "start": {
+                          "character": 2,
+                          "line": 7,
+                        },
+                      },
+                    },
+                  ],
+                  "value": "blue",
+                },
               },
-            },
-            {
-              name: 'Green',
-              type: {
-                __type: 'LiteralTO',
-                value: 'green',
+              {
+                "name": "Green",
+                "type": {
+                  "__type": "LiteralTO",
+                  "locations": [
+                    {
+                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "range": {
+                        "end": {
+                          "character": 17,
+                          "line": 8,
+                        },
+                        "start": {
+                          "character": 2,
+                          "line": 8,
+                        },
+                      },
+                    },
+                  ],
+                  "value": "green",
+                },
               },
-            },
-          ],
-        })
+            ],
+            "locations": [],
+            "typeName": "EnumWithValue",
+          }
+        `)
       })
 
       it('value of enum type should be resolved.', () => {
         const { valueOfEnum } = getTypes()
-        expect(valueOfEnum.type).toStrictEqual({
-          __type: 'LiteralTO',
-          value: 0,
-        })
+        expect(valueOfEnum.type).toMatchInlineSnapshot(`
+          {
+            "__type": "LiteralTO",
+            "locations": [],
+            "value": 0,
+          }
+        `)
       })
     })
 
@@ -347,25 +496,33 @@ describe('convertType', () => {
 
       it('array literal should be resolved.', () => {
         const { arrayLiteral } = getTypes()
-        expect(arrayLiteral.type).toStrictEqual({
-          __type: 'ArrayTO',
-          typeName: 'ArrStr',
-          child: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
-          },
-        })
+        expect(arrayLiteral.type).toMatchInlineSnapshot(`
+          {
+            "__type": "ArrayTO",
+            "child": {
+              "__type": "UnsupportedTO",
+              "kind": "arrayT",
+              "locations": [],
+            },
+            "locations": [],
+            "typeName": "ArrStr",
+          }
+        `)
       })
       it('array generics should be resolved.', () => {
         const { arrayGenerics } = getTypes()
-        expect(arrayGenerics.type).toStrictEqual({
-          __type: 'ArrayTO',
-          typeName: 'ArrStr2',
-          child: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
-          },
-        })
+        expect(arrayGenerics.type).toMatchInlineSnapshot(`
+          {
+            "__type": "ArrayTO",
+            "child": {
+              "__type": "UnsupportedTO",
+              "kind": "arrayT",
+              "locations": [],
+            },
+            "locations": [],
+            "typeName": "ArrStr2",
+          }
+        `)
       })
       it('array in property should be resolved.', () => {
         const { arrayInProp } = getTypes()
@@ -374,19 +531,36 @@ describe('convertType', () => {
           return
         }
 
-        expect(
-          helper.getObjectProps(arrayInProp.type.storeKey)[0],
-        ).toStrictEqual({
-          propName: 'arr',
-          type: {
-            __type: 'ArrayTO',
-            typeName: 'string[]',
-            child: {
-              __type: 'PrimitiveTO',
-              kind: 'string',
+        expect(helper.getObjectProps(arrayInProp.type.storeKey)[0])
+          .toMatchInlineSnapshot(`
+          {
+            "propName": "arr",
+            "type": {
+              "__type": "ArrayTO",
+              "child": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [],
+              },
+              "locations": [
+                {
+                  "fileName": "F:/ts-type-expand/packages/example/src/types/array.ts",
+                  "range": {
+                    "end": {
+                      "character": 20,
+                      "line": 3,
+                    },
+                    "start": {
+                      "character": 2,
+                      "line": 3,
+                    },
+                  },
+                },
+              ],
+              "typeName": "string[]",
             },
-          },
-        })
+          }
+        `)
       })
     })
 
@@ -413,50 +587,101 @@ describe('convertType', () => {
         if (obj.type.__type !== 'ObjectTO') {
           return
         }
-        expect(helper.getObjectProps(obj.type.storeKey)).toStrictEqual([
-          {
-            propName: 'name',
-            type: {
-              __type: 'PrimitiveTO',
-              kind: 'string',
-            },
-          },
-          {
-            propName: 'names',
-            type: {
-              __type: 'ArrayTO',
-              typeName: 'string[]',
-              child: {
-                __type: 'PrimitiveTO',
-                kind: 'string',
+        expect(helper.getObjectProps(obj.type.storeKey)).toMatchInlineSnapshot(`
+          [
+            {
+              "propName": "name",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                    "range": {
+                      "end": {
+                        "character": 14,
+                        "line": 1,
+                      },
+                      "start": {
+                        "character": 2,
+                        "line": 1,
+                      },
+                    },
+                  },
+                ],
               },
             },
-          },
-          {
-            propName: 'maybeName',
-            type: {
-              __type: 'UnionTO',
-              typeName: 'string | undefined',
-              unions: [
-                {
-                  __type: 'SpecialTO',
-                  kind: 'undefined',
+            {
+              "propName": "names",
+              "type": {
+                "__type": "ArrayTO",
+                "child": {
+                  "__type": "PrimitiveTO",
+                  "kind": "string",
+                  "locations": [],
                 },
-                {
-                  __type: 'PrimitiveTO',
-                  kind: 'string',
-                },
-              ],
+                "locations": [],
+                "typeName": "string[]",
+              },
             },
-          },
-          {
-            propName: 'time',
-            type: {
-              __type: 'SpecialTO',
-              kind: 'Date',
+            {
+              "propName": "maybeName",
+              "type": {
+                "__type": "UnionTO",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                    "range": {
+                      "end": {
+                        "character": 20,
+                        "line": 3,
+                      },
+                      "start": {
+                        "character": 2,
+                        "line": 3,
+                      },
+                    },
+                  },
+                ],
+                "typeName": "string | undefined",
+                "unions": [
+                  {
+                    "__type": "SpecialTO",
+                    "kind": "undefined",
+                    "locations": [],
+                  },
+                  {
+                    "__type": "PrimitiveTO",
+                    "kind": "string",
+                    "locations": [],
+                  },
+                ],
+              },
             },
-          },
-        ])
+            {
+              "propName": "time",
+              "type": {
+                "__type": "SpecialTO",
+                "kind": "Date",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                    "range": {
+                      "end": {
+                        "character": 12,
+                        "line": 4,
+                      },
+                      "start": {
+                        "character": 2,
+                        "line": 4,
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          ]
+        `)
       })
 
       it('recursive object should be resolved.', () => {
@@ -469,13 +694,30 @@ describe('convertType', () => {
         const propsOneRecursive = helper.getObjectProps(
           recursiveObj.type.storeKey,
         )
-        expect(propsOneRecursive[0]).toStrictEqual({
-          propName: 'name',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
-          },
-        })
+        expect(propsOneRecursive[0]).toMatchInlineSnapshot(`
+          {
+            "propName": "name",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [
+                {
+                  "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                  "range": {
+                    "end": {
+                      "character": 14,
+                      "line": 8,
+                    },
+                    "start": {
+                      "character": 2,
+                      "line": 8,
+                    },
+                  },
+                },
+              ],
+            },
+          }
+        `)
 
         const recursiveProp = propsOneRecursive[1]?.type
         if (recursiveProp === undefined) {
@@ -484,13 +726,31 @@ describe('convertType', () => {
         if (recursiveProp.__type !== 'ObjectTO') {
           throw new Error('Error')
         }
-        expect(helper.getObjectProps(recursiveProp.storeKey)[0]).toStrictEqual({
-          propName: 'name',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
-          },
-        })
+        expect(helper.getObjectProps(recursiveProp.storeKey)[0])
+          .toMatchInlineSnapshot(`
+          {
+            "propName": "name",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [
+                {
+                  "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                  "range": {
+                    "end": {
+                      "character": 14,
+                      "line": 8,
+                    },
+                    "start": {
+                      "character": 2,
+                      "line": 8,
+                    },
+                  },
+                },
+              ],
+            },
+          }
+        `)
       })
     })
 
@@ -534,44 +794,79 @@ describe('convertType', () => {
         if (resolvedGenerics.type.__type !== 'ObjectTO') {
           return
         }
-        expect(
-          helper.getObjectProps(resolvedGenerics.type.storeKey),
-        ).toStrictEqual([
-          {
-            propName: 'id',
-            type: {
-              __type: 'UnionTO',
-              typeName: 'number | undefined',
-              unions: [
-                {
-                  __type: 'SpecialTO',
-                  kind: 'undefined',
-                },
-                {
-                  __type: 'PrimitiveTO',
-                  kind: 'number',
-                },
-              ],
+        expect(helper.getObjectProps(resolvedGenerics.type.storeKey))
+          .toMatchInlineSnapshot(`
+          [
+            {
+              "propName": "id",
+              "type": {
+                "__type": "UnionTO",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/generics.ts",
+                    "range": {
+                      "end": {
+                        "character": 12,
+                        "line": 12,
+                      },
+                      "start": {
+                        "character": 2,
+                        "line": 12,
+                      },
+                    },
+                  },
+                ],
+                "typeName": "number | undefined",
+                "unions": [
+                  {
+                    "__type": "SpecialTO",
+                    "kind": "undefined",
+                    "locations": [],
+                  },
+                  {
+                    "__type": "PrimitiveTO",
+                    "kind": "number",
+                    "locations": [],
+                  },
+                ],
+              },
             },
-          },
-          {
-            propName: 'time',
-            type: {
-              __type: 'UnionTO',
-              typeName: 'Date | undefined',
-              unions: [
-                {
-                  __type: 'SpecialTO',
-                  kind: 'undefined',
-                },
-                {
-                  __type: 'SpecialTO',
-                  kind: 'Date',
-                },
-              ],
+            {
+              "propName": "time",
+              "type": {
+                "__type": "UnionTO",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/generics.ts",
+                    "range": {
+                      "end": {
+                        "character": 12,
+                        "line": 13,
+                      },
+                      "start": {
+                        "character": 2,
+                        "line": 13,
+                      },
+                    },
+                  },
+                ],
+                "typeName": "Date | undefined",
+                "unions": [
+                  {
+                    "__type": "SpecialTO",
+                    "kind": "undefined",
+                    "locations": [],
+                  },
+                  {
+                    "__type": "SpecialTO",
+                    "kind": "Date",
+                    "locations": [],
+                  },
+                ],
+              },
             },
-          },
-        ])
+          ]
+        `)
       })
     })
 
@@ -594,24 +889,55 @@ describe('convertType', () => {
       if (intersectionType.type.__type !== 'ObjectTO') {
         return
       }
-      expect(
-        helper.getObjectProps(intersectionType.type.storeKey),
-      ).toStrictEqual([
-        {
-          propName: 'hoge',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
+      expect(helper.getObjectProps(intersectionType.type.storeKey))
+        .toMatchInlineSnapshot(`
+        [
+          {
+            "propName": "hoge",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [
+                {
+                  "fileName": "F:/ts-type-expand/packages/example/src/types/intersection.ts",
+                  "range": {
+                    "end": {
+                      "character": 14,
+                      "line": 1,
+                    },
+                    "start": {
+                      "character": 2,
+                      "line": 1,
+                    },
+                  },
+                },
+              ],
+            },
           },
-        },
-        {
-          propName: 'foo',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
+          {
+            "propName": "foo",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [
+                {
+                  "fileName": "F:/ts-type-expand/packages/example/src/types/intersection.ts",
+                  "range": {
+                    "end": {
+                      "character": 13,
+                      "line": 3,
+                    },
+                    "start": {
+                      "character": 2,
+                      "line": 3,
+                    },
+                  },
+                },
+              ],
+            },
           },
-        },
-      ])
+        ]
+      `)
     })
 
     it('mapped type should be resolved.', () => {
@@ -631,29 +957,35 @@ describe('convertType', () => {
         return
       }
 
-      expect(helper.getObjectProps(mappedType.type.storeKey)).toStrictEqual([
-        {
-          propName: '1',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
+      expect(helper.getObjectProps(mappedType.type.storeKey))
+        .toMatchInlineSnapshot(`
+        [
+          {
+            "propName": "1",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [],
+            },
           },
-        },
-        {
-          propName: '2',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
+          {
+            "propName": "2",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [],
+            },
           },
-        },
-        {
-          propName: '3',
-          type: {
-            __type: 'PrimitiveTO',
-            kind: 'string',
+          {
+            "propName": "3",
+            "type": {
+              "__type": "PrimitiveTO",
+              "kind": "string",
+              "locations": [],
+            },
           },
-        },
-      ])
+        ]
+      `)
     })
 
     it('function', () => {
@@ -668,22 +1000,41 @@ describe('convertType', () => {
       const [type0, type1, type2] = typesResult.ok
       expect(type0).toBeDefined()
 
-      expect(type0?.type).toStrictEqual({
-        __type: 'CallableTO',
-        argTypes: [
-          {
-            name: 'arg',
-            type: {
-              __type: 'PrimitiveTO',
-              kind: 'string',
+      expect(type0?.type).toMatchInlineSnapshot(`
+        {
+          "__type": "CallableTO",
+          "argTypes": [
+            {
+              "name": "arg",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/function.ts",
+                    "range": {
+                      "end": {
+                        "character": 31,
+                        "line": 0,
+                      },
+                      "start": {
+                        "character": 20,
+                        "line": 0,
+                      },
+                    },
+                  },
+                ],
+              },
             },
+          ],
+          "locations": [],
+          "returnType": {
+            "__type": "PrimitiveTO",
+            "kind": "number",
+            "locations": [],
           },
-        ],
-        returnType: {
-          __type: 'PrimitiveTO',
-          kind: 'number',
-        },
-      })
+        }
+      `)
 
       expect(type1?.type.__type).toBe('ObjectTO')
       const typeObj = type1?.type
@@ -691,27 +1042,60 @@ describe('convertType', () => {
         return
       }
 
-      expect(helper.getObjectProps(typeObj.storeKey)).toStrictEqual([
-        {
-          propName: 'method',
-          type: {
-            __type: 'CallableTO',
-            argTypes: [
-              {
-                name: 'arg',
-                type: {
-                  __type: 'PrimitiveTO',
-                  kind: 'string',
+      expect(helper.getObjectProps(typeObj.storeKey)).toMatchInlineSnapshot(`
+        [
+          {
+            "propName": "method",
+            "type": {
+              "__type": "CallableTO",
+              "argTypes": [
+                {
+                  "name": "arg",
+                  "type": {
+                    "__type": "PrimitiveTO",
+                    "kind": "string",
+                    "locations": [
+                      {
+                        "fileName": "F:/ts-type-expand/packages/example/src/types/function.ts",
+                        "range": {
+                          "end": {
+                            "character": 22,
+                            "line": 2,
+                          },
+                          "start": {
+                            "character": 11,
+                            "line": 2,
+                          },
+                        },
+                      },
+                    ],
+                  },
                 },
+              ],
+              "locations": [
+                {
+                  "fileName": "F:/ts-type-expand/packages/example/src/types/function.ts",
+                  "range": {
+                    "end": {
+                      "character": 33,
+                      "line": 2,
+                    },
+                    "start": {
+                      "character": 10,
+                      "line": 2,
+                    },
+                  },
+                },
+              ],
+              "returnType": {
+                "__type": "PrimitiveTO",
+                "kind": "number",
+                "locations": [],
               },
-            ],
-            returnType: {
-              __type: 'PrimitiveTO',
-              kind: 'number',
             },
           },
-        },
-      ])
+        ]
+      `)
 
       expect(type2).not.toBeDefined()
     })
@@ -747,15 +1131,33 @@ describe('convertType', () => {
         if (childType.__type !== 'ObjectTO') {
           return
         }
-        expect(helper.getObjectProps(childType.storeKey)).toStrictEqual([
-          {
-            propName: 'name',
-            type: {
-              __type: 'PrimitiveTO',
-              kind: 'string',
+        expect(helper.getObjectProps(childType.storeKey))
+          .toMatchInlineSnapshot(`
+          [
+            {
+              "propName": "name",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/promise.ts",
+                    "range": {
+                      "end": {
+                        "character": 14,
+                        "line": 1,
+                      },
+                      "start": {
+                        "character": 2,
+                        "line": 1,
+                      },
+                    },
+                  },
+                ],
+              },
             },
-          },
-        ])
+          ]
+        `)
       })
 
       it('promise-like type should be resolved.', () => {
@@ -771,15 +1173,33 @@ describe('convertType', () => {
         if (childType.__type !== 'ObjectTO') {
           return
         }
-        expect(helper.getObjectProps(childType.storeKey)).toStrictEqual([
-          {
-            propName: 'name',
-            type: {
-              __type: 'PrimitiveTO',
-              kind: 'string',
+        expect(helper.getObjectProps(childType.storeKey))
+          .toMatchInlineSnapshot(`
+          [
+            {
+              "propName": "name",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "F:/ts-type-expand/packages/example/src/types/promise.ts",
+                    "range": {
+                      "end": {
+                        "character": 14,
+                        "line": 5,
+                      },
+                      "start": {
+                        "character": 2,
+                        "line": 5,
+                      },
+                    },
+                  },
+                ],
+              },
             },
-          },
-        ])
+          ]
+        `)
       })
     })
 

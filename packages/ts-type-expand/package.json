@@ -88,6 +88,12 @@
           "light": "resources/light/copy.svg",
           "dark": "resources/dark/copy.svg"
         }
+      },
+      {
+        "title": "Go To Type(ts-type-expand)",
+        "command": "ts-type-expand.goToType",
+        "icon": "$(arrow-right)",
+        "enablement": "view == ts-type-expand"
       }
     ],
     "views": {
@@ -109,6 +115,11 @@
       "view/item/context": [
         {
           "command": "ts-type-expand.copy",
+          "when": "view == ts-type-expand",
+          "group": "inline"
+        },
+        {
+          "command": "ts-type-expand.goToType",
           "when": "view == ts-type-expand",
           "group": "inline"
         }

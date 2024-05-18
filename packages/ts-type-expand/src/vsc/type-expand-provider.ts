@@ -4,6 +4,7 @@ import type { TypeObject } from 'compiler-api-helper'
 import { client, updatePortNumber } from '~/api-client'
 import type { ExtensionOption } from '~/types/option'
 import { getCurrentFileLanguageId } from '~/utils/vscode'
+import type * as ts from 'typescript'
 
 export type TypeExpandProviderOptions = ExtensionOption
 
@@ -414,4 +415,38 @@ export class ExpandableTypeItem extends vscode.TreeItem {
   public async getCopyText(): Promise<string> {
     return `type ${this.meta?.aliasName ?? getLabelText(this.type)} = ${await typeObjectToText(this.type)}`
   }
+
+  public goToDefinition() {
+    console.log(JSON.stringify(this.type))
+    if (this.type.locations.length > 0) {
+      const location = this.type.locations[0]
+      const range = {
+        start: location.range.start,
+        end: location.range.end,
+      }
+
+      const args: [vscode.Uri, vscode.TextDocumentShowOptions] = [
+        vscode.Uri.file(location.fileName),
+        {
+          selection: rangeFromLineAndCharacters(range.start, range.end),
+        },
+      ]
+
+      vscode.commands.executeCommand('vscode.open', ...args)
+    }
+  }
 }
+
+const positionFromLineAndCharacter = ({
+  line,
+  character,
+}: ts.LineAndCharacter) => new vscode.Position(line, character)
+
+const rangeFromLineAndCharacters = (
+  start: ts.LineAndCharacter,
+  end: ts.LineAndCharacter,
+) =>
+  new vscode.Range(
+    positionFromLineAndCharacter(start),
+    positionFromLineAndCharacter(end),
+  )

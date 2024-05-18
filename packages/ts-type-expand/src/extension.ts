@@ -264,6 +264,10 @@ const extensionClosure = () => {
             vscode.env.clipboard.writeText(await value.getCopyText())
           },
         ),
+        vscode.commands.registerCommand(
+          tsTypeExpandConfig.command('goToType'),
+          (item: ExpandableTypeItem) => item.goToDefinition(),
+        ),
         vscode.window.registerTreeDataProvider(
           tsTypeExpandConfig.extensionId,
           typeExpandProvider,
