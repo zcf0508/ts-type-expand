@@ -1,5 +1,5 @@
 import { resolve } from 'node:path'
-import type { TypeObject } from '.'
+import type { LiteralTO, TypeObject } from '.'
 import { CompilerApiHelper } from '~/compiler-api-helper'
 import { isOk } from '~/util'
 import { createProgram } from './test-helpers/program'
@@ -8,8 +8,74 @@ import * as ts from 'typescript'
 
 const absolutePath = (path: string) => resolve(__dirname, '../../example', path)
 
+const relativePath = (path: string) =>
+  path
+    .replace(/\\/g, '/')
+    .replace(resolve(__dirname, '../../example').replace(/\\/g, '/'), '.')
+
 const program = createProgram(absolutePath('./tsconfig.json'))
 const helper = new CompilerApiHelper(program, ts)
+
+function isTypeObjectArray(obj: unknown): obj is TypeObject[] {
+  return Array.isArray(obj)
+}
+
+function isTypeObject(obj: unknown): obj is TypeObject {
+  return !Array.isArray(obj) && obj !== null && typeof obj === 'object'
+}
+
+function transformLocations<T extends TypeObject>(obj: T | T[]): T | T[] {
+  if (isTypeObjectArray(obj)) {
+    return obj.map((item) => transformLocations(item as TypeObject) as T)
+  } else if (isTypeObject(obj)) {
+    if ('locations' in obj) {
+      obj.locations = obj.locations.map((location) => {
+        if (location.fileName && typeof location.fileName === 'string') {
+          location.fileName = relativePath(location.fileName)
+        }
+        return location
+      })
+    }
+    if ('child' in obj) {
+      obj.child = transformLocations(obj.child) as T
+    }
+    if ('enums' in obj) {
+      obj.enums = obj.enums.map((item) => {
+        item.type = transformLocations(item.type) as LiteralTO
+        return item
+      })
+    }
+    if ('argTypes' in obj) {
+      obj.argTypes = obj.argTypes.map((item) => {
+        item.type = transformLocations(item.type) as TypeObject
+        return item
+      })
+    }
+    return obj
+  }
+  return obj
+}
+
+expect.addSnapshotSerializer({
+  serialize(val) {
+    if (Array.isArray(val)) {
+      val = val.map((item) => {
+        if ('type' in item) {
+          item.type = transformLocations(item.type)
+        }
+        return item
+      })
+    } else if ('type' in val) {
+      val.type = transformLocations(val.type)
+    } else {
+      val = transformLocations(val)
+    }
+    return JSON.stringify(val, null, 2)
+  },
+  test(val) {
+    return val
+  },
+})
 
 describe('convertType', () => {
   describe('patterns', () => {
@@ -37,15 +103,15 @@ describe('convertType', () => {
 
         expect<{ typeName: string | undefined; type: TypeObject }>(literalValue)
           .toMatchInlineSnapshot(`
-          {
-            "type": {
-              "__type": "LiteralTO",
-              "locations": [],
-              "value": "hello",
-            },
-            "typeName": "value",
-          }
-        `)
+            {
+              "typeName": "value",
+              "type": {
+                "__type": "LiteralTO",
+                "value": "hello",
+                "locations": []
+              }
+            }
+          `)
       })
 
       it('value declaration for function should be resolved.', () => {
@@ -55,21 +121,21 @@ describe('convertType', () => {
           functionValue,
         ).toMatchInlineSnapshot(`
           {
+            "typeName": "asyncFunc",
             "type": {
               "__type": "CallableTO",
               "argTypes": [],
-              "locations": [],
               "returnType": {
                 "__type": "PromiseTO",
                 "child": {
                   "__type": "SpecialTO",
                   "kind": "void",
-                  "locations": [],
+                  "locations": []
                 },
-                "locations": [],
+                "locations": []
               },
-            },
-            "typeName": "asyncFunc",
+              "locations": []
+            }
           }
         `)
       })
@@ -95,31 +161,31 @@ describe('convertType', () => {
 
       expect(helper.getObjectProps(reExportedValue.type.storeKey))
         .toMatchInlineSnapshot(`
-        [
-          {
-            "propName": "name",
-            "type": {
-              "__type": "PrimitiveTO",
-              "kind": "string",
-              "locations": [
-                {
-                  "fileName": "F:/ts-type-expand/packages/example/src/patterns/re-export/original.ts",
-                  "range": {
-                    "end": {
-                      "character": 14,
-                      "line": 1,
-                    },
-                    "start": {
-                      "character": 2,
-                      "line": 1,
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        ]
-      `)
+          [
+            {
+              "propName": "name",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "./src/patterns/re-export/original.ts",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 2
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 14
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        `)
     })
   })
 
@@ -140,7 +206,7 @@ describe('convertType', () => {
         {
           "__type": "PrimitiveTO",
           "kind": "string",
-          "locations": [],
+          "locations": []
         }
       `)
 
@@ -148,7 +214,7 @@ describe('convertType', () => {
         {
           "__type": "PrimitiveTO",
           "kind": "number",
-          "locations": [],
+          "locations": []
         }
       `)
     })
@@ -180,7 +246,7 @@ describe('convertType', () => {
           {
             "__type": "SpecialTO",
             "kind": "undefined",
-            "locations": [],
+            "locations": []
           }
         `)
       })
@@ -191,7 +257,7 @@ describe('convertType', () => {
           {
             "__type": "SpecialTO",
             "kind": "null",
-            "locations": [],
+            "locations": []
           }
         `)
       })
@@ -212,24 +278,24 @@ describe('convertType', () => {
       expect(types[0]?.type).toMatchInlineSnapshot(`
         {
           "__type": "LiteralTO",
-          "locations": [],
           "value": "hello",
+          "locations": []
         }
       `)
 
       expect(types[1]?.type).toMatchInlineSnapshot(`
         {
           "__type": "LiteralTO",
-          "locations": [],
           "value": 20,
+          "locations": []
         }
       `)
 
       expect(types[2]?.type).toMatchInlineSnapshot(`
         {
           "__type": "LiteralTO",
-          "locations": [],
           "value": true,
+          "locations": []
         }
       `)
     })
@@ -254,20 +320,20 @@ describe('convertType', () => {
       expect(type0.type).toMatchInlineSnapshot(`
         {
           "__type": "UnionTO",
-          "locations": [],
           "typeName": "StrOrNumber",
           "unions": [
             {
               "__type": "PrimitiveTO",
               "kind": "string",
-              "locations": [],
+              "locations": []
             },
             {
               "__type": "PrimitiveTO",
               "kind": "number",
-              "locations": [],
-            },
+              "locations": []
+            }
           ],
+          "locations": []
         }
       `)
     })
@@ -304,76 +370,76 @@ describe('convertType', () => {
         expect(basicEnum.type).toMatchInlineSnapshot(`
           {
             "__type": "EnumTO",
+            "typeName": "BasicEnum",
             "enums": [
               {
                 "name": "Red",
                 "type": {
                   "__type": "LiteralTO",
+                  "value": 0,
                   "locations": [
                     {
-                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "fileName": "./src/types/enum.ts",
                       "range": {
-                        "end": {
-                          "character": 5,
-                          "line": 1,
-                        },
                         "start": {
-                          "character": 2,
                           "line": 1,
+                          "character": 2
                         },
-                      },
-                    },
-                  ],
-                  "value": 0,
-                },
+                        "end": {
+                          "line": 1,
+                          "character": 5
+                        }
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "name": "Blue",
                 "type": {
                   "__type": "LiteralTO",
+                  "value": 1,
                   "locations": [
                     {
-                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "fileName": "./src/types/enum.ts",
                       "range": {
-                        "end": {
-                          "character": 6,
-                          "line": 2,
-                        },
                         "start": {
-                          "character": 2,
                           "line": 2,
+                          "character": 2
                         },
-                      },
-                    },
-                  ],
-                  "value": 1,
-                },
+                        "end": {
+                          "line": 2,
+                          "character": 6
+                        }
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "name": "Green",
                 "type": {
                   "__type": "LiteralTO",
+                  "value": 2,
                   "locations": [
                     {
-                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "fileName": "./src/types/enum.ts",
                       "range": {
-                        "end": {
-                          "character": 7,
-                          "line": 3,
-                        },
                         "start": {
-                          "character": 2,
                           "line": 3,
+                          "character": 2
                         },
-                      },
-                    },
-                  ],
-                  "value": 2,
-                },
-              },
+                        "end": {
+                          "line": 3,
+                          "character": 7
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
             ],
-            "locations": [],
-            "typeName": "BasicEnum",
+            "locations": []
           }
         `)
       })
@@ -383,76 +449,76 @@ describe('convertType', () => {
         expect(enumWithValue.type).toMatchInlineSnapshot(`
           {
             "__type": "EnumTO",
+            "typeName": "EnumWithValue",
             "enums": [
               {
                 "name": "Red",
                 "type": {
                   "__type": "LiteralTO",
+                  "value": "red",
                   "locations": [
                     {
-                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "fileName": "./src/types/enum.ts",
                       "range": {
-                        "end": {
-                          "character": 13,
-                          "line": 6,
-                        },
                         "start": {
-                          "character": 2,
                           "line": 6,
+                          "character": 2
                         },
-                      },
-                    },
-                  ],
-                  "value": "red",
-                },
+                        "end": {
+                          "line": 6,
+                          "character": 13
+                        }
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "name": "Blue",
                 "type": {
                   "__type": "LiteralTO",
+                  "value": "blue",
                   "locations": [
                     {
-                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "fileName": "./src/types/enum.ts",
                       "range": {
-                        "end": {
-                          "character": 15,
-                          "line": 7,
-                        },
                         "start": {
-                          "character": 2,
                           "line": 7,
+                          "character": 2
                         },
-                      },
-                    },
-                  ],
-                  "value": "blue",
-                },
+                        "end": {
+                          "line": 7,
+                          "character": 15
+                        }
+                      }
+                    }
+                  ]
+                }
               },
               {
                 "name": "Green",
                 "type": {
                   "__type": "LiteralTO",
+                  "value": "green",
                   "locations": [
                     {
-                      "fileName": "F:/ts-type-expand/packages/example/src/types/enum.ts",
+                      "fileName": "./src/types/enum.ts",
                       "range": {
-                        "end": {
-                          "character": 17,
-                          "line": 8,
-                        },
                         "start": {
-                          "character": 2,
                           "line": 8,
+                          "character": 2
                         },
-                      },
-                    },
-                  ],
-                  "value": "green",
-                },
-              },
+                        "end": {
+                          "line": 8,
+                          "character": 17
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
             ],
-            "locations": [],
-            "typeName": "EnumWithValue",
+            "locations": []
           }
         `)
       })
@@ -462,8 +528,8 @@ describe('convertType', () => {
         expect(valueOfEnum.type).toMatchInlineSnapshot(`
           {
             "__type": "LiteralTO",
-            "locations": [],
             "value": 0,
+            "locations": []
           }
         `)
       })
@@ -499,13 +565,13 @@ describe('convertType', () => {
         expect(arrayLiteral.type).toMatchInlineSnapshot(`
           {
             "__type": "ArrayTO",
+            "typeName": "ArrStr",
             "child": {
               "__type": "UnsupportedTO",
               "kind": "arrayT",
-              "locations": [],
+              "locations": []
             },
-            "locations": [],
-            "typeName": "ArrStr",
+            "locations": []
           }
         `)
       })
@@ -514,13 +580,13 @@ describe('convertType', () => {
         expect(arrayGenerics.type).toMatchInlineSnapshot(`
           {
             "__type": "ArrayTO",
+            "typeName": "ArrStr2",
             "child": {
               "__type": "UnsupportedTO",
               "kind": "arrayT",
-              "locations": [],
+              "locations": []
             },
-            "locations": [],
-            "typeName": "ArrStr2",
+            "locations": []
           }
         `)
       })
@@ -533,34 +599,34 @@ describe('convertType', () => {
 
         expect(helper.getObjectProps(arrayInProp.type.storeKey)[0])
           .toMatchInlineSnapshot(`
-          {
-            "propName": "arr",
-            "type": {
-              "__type": "ArrayTO",
-              "child": {
-                "__type": "PrimitiveTO",
-                "kind": "string",
-                "locations": [],
-              },
-              "locations": [
-                {
-                  "fileName": "F:/ts-type-expand/packages/example/src/types/array.ts",
-                  "range": {
-                    "end": {
-                      "character": 20,
-                      "line": 3,
-                    },
-                    "start": {
-                      "character": 2,
-                      "line": 3,
-                    },
-                  },
+            {
+              "propName": "arr",
+              "type": {
+                "__type": "ArrayTO",
+                "typeName": "string[]",
+                "child": {
+                  "__type": "PrimitiveTO",
+                  "kind": "string",
+                  "locations": []
                 },
-              ],
-              "typeName": "string[]",
-            },
-          }
-        `)
+                "locations": [
+                  {
+                    "fileName": "./src/types/array.ts",
+                    "range": {
+                      "start": {
+                        "line": 3,
+                        "character": 2
+                      },
+                      "end": {
+                        "line": 3,
+                        "character": 20
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          `)
       })
     })
 
@@ -596,67 +662,67 @@ describe('convertType', () => {
                 "kind": "string",
                 "locations": [
                   {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                    "fileName": "./src/types/object.ts",
                     "range": {
-                      "end": {
-                        "character": 14,
-                        "line": 1,
-                      },
                       "start": {
-                        "character": 2,
                         "line": 1,
+                        "character": 2
                       },
-                    },
-                  },
-                ],
-              },
+                      "end": {
+                        "line": 1,
+                        "character": 14
+                      }
+                    }
+                  }
+                ]
+              }
             },
             {
               "propName": "names",
               "type": {
                 "__type": "ArrayTO",
+                "typeName": "string[]",
                 "child": {
                   "__type": "PrimitiveTO",
                   "kind": "string",
-                  "locations": [],
+                  "locations": []
                 },
-                "locations": [],
-                "typeName": "string[]",
-              },
+                "locations": []
+              }
             },
             {
               "propName": "maybeName",
               "type": {
                 "__type": "UnionTO",
-                "locations": [
-                  {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
-                    "range": {
-                      "end": {
-                        "character": 20,
-                        "line": 3,
-                      },
-                      "start": {
-                        "character": 2,
-                        "line": 3,
-                      },
-                    },
-                  },
-                ],
                 "typeName": "string | undefined",
                 "unions": [
                   {
                     "__type": "SpecialTO",
                     "kind": "undefined",
-                    "locations": [],
+                    "locations": []
                   },
                   {
                     "__type": "PrimitiveTO",
                     "kind": "string",
-                    "locations": [],
-                  },
+                    "locations": []
+                  }
                 ],
-              },
+                "locations": [
+                  {
+                    "fileName": "./src/types/object.ts",
+                    "range": {
+                      "start": {
+                        "line": 3,
+                        "character": 2
+                      },
+                      "end": {
+                        "line": 3,
+                        "character": 20
+                      }
+                    }
+                  }
+                ]
+              }
             },
             {
               "propName": "time",
@@ -665,21 +731,21 @@ describe('convertType', () => {
                 "kind": "Date",
                 "locations": [
                   {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                    "fileName": "./src/types/object.ts",
                     "range": {
-                      "end": {
-                        "character": 12,
-                        "line": 4,
-                      },
                       "start": {
-                        "character": 2,
                         "line": 4,
+                        "character": 2
                       },
-                    },
-                  },
-                ],
-              },
-            },
+                      "end": {
+                        "line": 4,
+                        "character": 12
+                      }
+                    }
+                  }
+                ]
+              }
+            }
           ]
         `)
       })
@@ -702,20 +768,20 @@ describe('convertType', () => {
               "kind": "string",
               "locations": [
                 {
-                  "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
+                  "fileName": "./src/types/object.ts",
                   "range": {
-                    "end": {
-                      "character": 14,
-                      "line": 8,
-                    },
                     "start": {
-                      "character": 2,
                       "line": 8,
+                      "character": 2
                     },
-                  },
-                },
-              ],
-            },
+                    "end": {
+                      "line": 8,
+                      "character": 14
+                    }
+                  }
+                }
+              ]
+            }
           }
         `)
 
@@ -728,29 +794,29 @@ describe('convertType', () => {
         }
         expect(helper.getObjectProps(recursiveProp.storeKey)[0])
           .toMatchInlineSnapshot(`
-          {
-            "propName": "name",
-            "type": {
-              "__type": "PrimitiveTO",
-              "kind": "string",
-              "locations": [
-                {
-                  "fileName": "F:/ts-type-expand/packages/example/src/types/object.ts",
-                  "range": {
-                    "end": {
-                      "character": 14,
-                      "line": 8,
-                    },
-                    "start": {
-                      "character": 2,
-                      "line": 8,
-                    },
-                  },
-                },
-              ],
-            },
-          }
-        `)
+            {
+              "propName": "name",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "./src/types/object.ts",
+                    "range": {
+                      "start": {
+                        "line": 8,
+                        "character": 2
+                      },
+                      "end": {
+                        "line": 8,
+                        "character": 14
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          `)
       })
     })
 
@@ -796,77 +862,77 @@ describe('convertType', () => {
         }
         expect(helper.getObjectProps(resolvedGenerics.type.storeKey))
           .toMatchInlineSnapshot(`
-          [
-            {
-              "propName": "id",
-              "type": {
-                "__type": "UnionTO",
-                "locations": [
-                  {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/generics.ts",
-                    "range": {
-                      "end": {
-                        "character": 12,
-                        "line": 12,
-                      },
-                      "start": {
-                        "character": 2,
-                        "line": 12,
-                      },
+            [
+              {
+                "propName": "id",
+                "type": {
+                  "__type": "UnionTO",
+                  "typeName": "number | undefined",
+                  "unions": [
+                    {
+                      "__type": "SpecialTO",
+                      "kind": "undefined",
+                      "locations": []
                     },
-                  },
-                ],
-                "typeName": "number | undefined",
-                "unions": [
-                  {
-                    "__type": "SpecialTO",
-                    "kind": "undefined",
-                    "locations": [],
-                  },
-                  {
-                    "__type": "PrimitiveTO",
-                    "kind": "number",
-                    "locations": [],
-                  },
-                ],
+                    {
+                      "__type": "PrimitiveTO",
+                      "kind": "number",
+                      "locations": []
+                    }
+                  ],
+                  "locations": [
+                    {
+                      "fileName": "./src/types/generics.ts",
+                      "range": {
+                        "start": {
+                          "line": 12,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 12,
+                          "character": 12
+                        }
+                      }
+                    }
+                  ]
+                }
               },
-            },
-            {
-              "propName": "time",
-              "type": {
-                "__type": "UnionTO",
-                "locations": [
-                  {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/generics.ts",
-                    "range": {
-                      "end": {
-                        "character": 12,
-                        "line": 13,
-                      },
-                      "start": {
-                        "character": 2,
-                        "line": 13,
-                      },
+              {
+                "propName": "time",
+                "type": {
+                  "__type": "UnionTO",
+                  "typeName": "Date | undefined",
+                  "unions": [
+                    {
+                      "__type": "SpecialTO",
+                      "kind": "undefined",
+                      "locations": []
                     },
-                  },
-                ],
-                "typeName": "Date | undefined",
-                "unions": [
-                  {
-                    "__type": "SpecialTO",
-                    "kind": "undefined",
-                    "locations": [],
-                  },
-                  {
-                    "__type": "SpecialTO",
-                    "kind": "Date",
-                    "locations": [],
-                  },
-                ],
-              },
-            },
-          ]
-        `)
+                    {
+                      "__type": "SpecialTO",
+                      "kind": "Date",
+                      "locations": []
+                    }
+                  ],
+                  "locations": [
+                    {
+                      "fileName": "./src/types/generics.ts",
+                      "range": {
+                        "start": {
+                          "line": 13,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 13,
+                          "character": 12
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          `)
       })
     })
 
@@ -891,53 +957,53 @@ describe('convertType', () => {
       }
       expect(helper.getObjectProps(intersectionType.type.storeKey))
         .toMatchInlineSnapshot(`
-        [
-          {
-            "propName": "hoge",
-            "type": {
-              "__type": "PrimitiveTO",
-              "kind": "string",
-              "locations": [
-                {
-                  "fileName": "F:/ts-type-expand/packages/example/src/types/intersection.ts",
-                  "range": {
-                    "end": {
-                      "character": 14,
-                      "line": 1,
-                    },
-                    "start": {
-                      "character": 2,
-                      "line": 1,
-                    },
-                  },
-                },
-              ],
+          [
+            {
+              "propName": "hoge",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "./src/types/intersection.ts",
+                    "range": {
+                      "start": {
+                        "line": 1,
+                        "character": 2
+                      },
+                      "end": {
+                        "line": 1,
+                        "character": 14
+                      }
+                    }
+                  }
+                ]
+              }
             },
-          },
-          {
-            "propName": "foo",
-            "type": {
-              "__type": "PrimitiveTO",
-              "kind": "string",
-              "locations": [
-                {
-                  "fileName": "F:/ts-type-expand/packages/example/src/types/intersection.ts",
-                  "range": {
-                    "end": {
-                      "character": 13,
-                      "line": 3,
-                    },
-                    "start": {
-                      "character": 2,
-                      "line": 3,
-                    },
-                  },
-                },
-              ],
-            },
-          },
-        ]
-      `)
+            {
+              "propName": "foo",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": [
+                  {
+                    "fileName": "./src/types/intersection.ts",
+                    "range": {
+                      "start": {
+                        "line": 3,
+                        "character": 2
+                      },
+                      "end": {
+                        "line": 3,
+                        "character": 13
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        `)
     })
 
     it('mapped type should be resolved.', () => {
@@ -959,33 +1025,33 @@ describe('convertType', () => {
 
       expect(helper.getObjectProps(mappedType.type.storeKey))
         .toMatchInlineSnapshot(`
-        [
-          {
-            "propName": "1",
-            "type": {
-              "__type": "PrimitiveTO",
-              "kind": "string",
-              "locations": [],
+          [
+            {
+              "propName": "1",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": []
+              }
             },
-          },
-          {
-            "propName": "2",
-            "type": {
-              "__type": "PrimitiveTO",
-              "kind": "string",
-              "locations": [],
+            {
+              "propName": "2",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": []
+              }
             },
-          },
-          {
-            "propName": "3",
-            "type": {
-              "__type": "PrimitiveTO",
-              "kind": "string",
-              "locations": [],
-            },
-          },
-        ]
-      `)
+            {
+              "propName": "3",
+              "type": {
+                "__type": "PrimitiveTO",
+                "kind": "string",
+                "locations": []
+              }
+            }
+          ]
+        `)
     })
 
     it('function', () => {
@@ -1011,28 +1077,28 @@ describe('convertType', () => {
                 "kind": "string",
                 "locations": [
                   {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/function.ts",
+                    "fileName": "./src/types/function.ts",
                     "range": {
-                      "end": {
-                        "character": 31,
-                        "line": 0,
-                      },
                       "start": {
-                        "character": 20,
                         "line": 0,
+                        "character": 20
                       },
-                    },
-                  },
-                ],
-              },
-            },
+                      "end": {
+                        "line": 0,
+                        "character": 31
+                      }
+                    }
+                  }
+                ]
+              }
+            }
           ],
-          "locations": [],
           "returnType": {
             "__type": "PrimitiveTO",
             "kind": "number",
-            "locations": [],
+            "locations": []
           },
+          "locations": []
         }
       `)
 
@@ -1056,44 +1122,44 @@ describe('convertType', () => {
                     "kind": "string",
                     "locations": [
                       {
-                        "fileName": "F:/ts-type-expand/packages/example/src/types/function.ts",
+                        "fileName": "./src/types/function.ts",
                         "range": {
-                          "end": {
-                            "character": 22,
-                            "line": 2,
-                          },
                           "start": {
-                            "character": 11,
                             "line": 2,
+                            "character": 11
                           },
-                        },
-                      },
-                    ],
-                  },
-                },
-              ],
-              "locations": [
-                {
-                  "fileName": "F:/ts-type-expand/packages/example/src/types/function.ts",
-                  "range": {
-                    "end": {
-                      "character": 33,
-                      "line": 2,
-                    },
-                    "start": {
-                      "character": 10,
-                      "line": 2,
-                    },
-                  },
-                },
+                          "end": {
+                            "line": 2,
+                            "character": 22
+                          }
+                        }
+                      }
+                    ]
+                  }
+                }
               ],
               "returnType": {
                 "__type": "PrimitiveTO",
                 "kind": "number",
-                "locations": [],
+                "locations": []
               },
-            },
-          },
+              "locations": [
+                {
+                  "fileName": "./src/types/function.ts",
+                  "range": {
+                    "start": {
+                      "line": 2,
+                      "character": 10
+                    },
+                    "end": {
+                      "line": 2,
+                      "character": 33
+                    }
+                  }
+                }
+              ]
+            }
+          }
         ]
       `)
 
@@ -1133,31 +1199,31 @@ describe('convertType', () => {
         }
         expect(helper.getObjectProps(childType.storeKey))
           .toMatchInlineSnapshot(`
-          [
-            {
-              "propName": "name",
-              "type": {
-                "__type": "PrimitiveTO",
-                "kind": "string",
-                "locations": [
-                  {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/promise.ts",
-                    "range": {
-                      "end": {
-                        "character": 14,
-                        "line": 1,
-                      },
-                      "start": {
-                        "character": 2,
-                        "line": 1,
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-          ]
-        `)
+            [
+              {
+                "propName": "name",
+                "type": {
+                  "__type": "PrimitiveTO",
+                  "kind": "string",
+                  "locations": [
+                    {
+                      "fileName": "./src/types/promise.ts",
+                      "range": {
+                        "start": {
+                          "line": 1,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 1,
+                          "character": 14
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          `)
       })
 
       it('promise-like type should be resolved.', () => {
@@ -1175,31 +1241,31 @@ describe('convertType', () => {
         }
         expect(helper.getObjectProps(childType.storeKey))
           .toMatchInlineSnapshot(`
-          [
-            {
-              "propName": "name",
-              "type": {
-                "__type": "PrimitiveTO",
-                "kind": "string",
-                "locations": [
-                  {
-                    "fileName": "F:/ts-type-expand/packages/example/src/types/promise.ts",
-                    "range": {
-                      "end": {
-                        "character": 14,
-                        "line": 5,
-                      },
-                      "start": {
-                        "character": 2,
-                        "line": 5,
-                      },
-                    },
-                  },
-                ],
-              },
-            },
-          ]
-        `)
+            [
+              {
+                "propName": "name",
+                "type": {
+                  "__type": "PrimitiveTO",
+                  "kind": "string",
+                  "locations": [
+                    {
+                      "fileName": "./src/types/promise.ts",
+                      "range": {
+                        "start": {
+                          "line": 5,
+                          "character": 2
+                        },
+                        "end": {
+                          "line": 5,
+                          "character": 14
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          `)
       })
     })
 
