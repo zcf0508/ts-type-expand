@@ -108,7 +108,21 @@ describe('convertType', () => {
               "type": {
                 "__type": "LiteralTO",
                 "value": "hello",
-                "locations": []
+                "locations": [
+                  {
+                    "fileName": "./src/patterns/variable.ts",
+                    "range": {
+                      "start": {
+                        "line": 0,
+                        "character": 13
+                      },
+                      "end": {
+                        "line": 0,
+                        "character": 28
+                      }
+                    }
+                  }
+                ]
               }
             }
           `)
@@ -134,7 +148,21 @@ describe('convertType', () => {
                 },
                 "locations": []
               },
-              "locations": []
+              "locations": [
+                {
+                  "fileName": "./src/patterns/variable.ts",
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "character": 13
+                    },
+                    "end": {
+                      "line": 1,
+                      "character": 54
+                    }
+                  }
+                }
+              ]
             }
           }
         `)
@@ -214,7 +242,21 @@ describe('convertType', () => {
         {
           "__type": "PrimitiveTO",
           "kind": "number",
-          "locations": []
+          "locations": [
+            {
+              "fileName": "./src/types/primitive.ts",
+              "range": {
+                "start": {
+                  "line": 1,
+                  "character": 0
+                },
+                "end": {
+                  "line": 1,
+                  "character": 24
+                }
+              }
+            }
+          ]
         }
       `)
     })
@@ -257,7 +299,21 @@ describe('convertType', () => {
           {
             "__type": "SpecialTO",
             "kind": "null",
-            "locations": []
+            "locations": [
+              {
+                "fileName": "./src/types/special.ts",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 24
+                  }
+                }
+              }
+            ]
           }
         `)
       })
@@ -287,7 +343,21 @@ describe('convertType', () => {
         {
           "__type": "LiteralTO",
           "value": 20,
-          "locations": []
+          "locations": [
+            {
+              "fileName": "./src/types/literal.ts",
+              "range": {
+                "start": {
+                  "line": 1,
+                  "character": 0
+                },
+                "end": {
+                  "line": 1,
+                  "character": 20
+                }
+              }
+            }
+          ]
         }
       `)
 
@@ -295,7 +365,21 @@ describe('convertType', () => {
         {
           "__type": "LiteralTO",
           "value": true,
-          "locations": []
+          "locations": [
+            {
+              "fileName": "./src/types/literal.ts",
+              "range": {
+                "start": {
+                  "line": 2,
+                  "character": 0
+                },
+                "end": {
+                  "line": 2,
+                  "character": 23
+                }
+              }
+            }
+          ]
         }
       `)
     })
@@ -518,7 +602,21 @@ describe('convertType', () => {
                 }
               }
             ],
-            "locations": []
+            "locations": [
+              {
+                "fileName": "./src/types/enum.ts",
+                "range": {
+                  "start": {
+                    "line": 5,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 9,
+                    "character": 1
+                  }
+                }
+              }
+            ]
           }
         `)
       })
@@ -529,7 +627,21 @@ describe('convertType', () => {
           {
             "__type": "LiteralTO",
             "value": 0,
-            "locations": []
+            "locations": [
+              {
+                "fileName": "./src/types/enum.ts",
+                "range": {
+                  "start": {
+                    "line": 11,
+                    "character": 13
+                  },
+                  "end": {
+                    "line": 11,
+                    "character": 34
+                  }
+                }
+              }
+            ]
           }
         `)
       })
@@ -586,7 +698,21 @@ describe('convertType', () => {
               "kind": "arrayT",
               "locations": []
             },
-            "locations": []
+            "locations": [
+              {
+                "fileName": "./src/types/array.ts",
+                "range": {
+                  "start": {
+                    "line": 1,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 1,
+                    "character": 35
+                  }
+                }
+              }
+            ]
           }
         `)
       })

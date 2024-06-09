@@ -25,6 +25,8 @@ import {
   getSourceFileLocation,
   filterUndefined,
   getDescendantAtPosition,
+  isValidType,
+  getSymbolType,
 } from './util'
 
 type TypeDeclaration = { typeName: string | undefined; type: to.TypeObject }
@@ -137,6 +139,7 @@ export class CompilerApiHelper {
               typeName: dangerouslyDeclareToEscapedText(declare),
               type: this._convertType(
                 this.#typeChecker.getTypeAtLocation(declare),
+                declare,
               ),
             }
           }
@@ -148,7 +151,10 @@ export class CompilerApiHelper {
               dangerouslyNodeToSymbol,
               dangerouslySymbolToEscapedName,
             ),
-            type: this._convertType(this.#typeChecker.getTypeAtLocation(node)),
+            type: this._convertType(
+              this.#typeChecker.getTypeAtLocation(node),
+              node,
+            ),
           }
         })
         .filter(
@@ -391,11 +397,30 @@ export class CompilerApiHelper {
     return this._convertType(type, maybeNode)
   }
 
+  private _getSymbol(maybeNode?: ts.Node) {
+    if (!maybeNode?.parent) {
+      return undefined
+    }
+
+    const symbol =
+      this.#typeChecker.getSymbolAtLocation(maybeNode) ??
+      getNodeSymbol(this.#typeChecker, maybeNode)
+
+    if (symbol) {
+      const symbolType = getSymbolType(this.#typeChecker, symbol, maybeNode)
+
+      if (
+        isValidType(symbolType) ||
+        symbol.flags & this.#ts.SymbolFlags.Module
+      ) {
+        return symbol
+      }
+    }
+    return undefined
+  }
+
   public _convertType(type: ts.Type, maybeNode?: ts.Node): to.TypeObject {
-    const symbol = maybeNode
-      ? this.#typeChecker.getSymbolAtLocation(maybeNode) ??
-        getNodeSymbol(this.#typeChecker, maybeNode)
-      : undefined
+    const symbol = this._getSymbol(maybeNode)
 
     const locations = this._getLocations(symbol)
 
