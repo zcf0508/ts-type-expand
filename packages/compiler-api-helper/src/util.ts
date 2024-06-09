@@ -261,10 +261,8 @@ export function getDescendantAtRange(
           return
         }
 
-        const isEndOfFileToken = child.kind === _ts.SyntaxKind.EndOfFileToken
-        const hasSameStart =
-          bestMatch.start === childStart && range[0] === childStart
-        if (!isEndOfFileToken && !hasSameStart) {
+        if (childStart <= range[0] && child.end >= range[1]) {
+          console.log(child.getFullText())
           bestMatch = { node: child, start: childStart }
         }
       }

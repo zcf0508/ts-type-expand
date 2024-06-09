@@ -234,7 +234,21 @@ describe('convertType', () => {
         {
           "__type": "PrimitiveTO",
           "kind": "string",
-          "locations": []
+          "locations": [
+            {
+              "fileName": "./src/types/primitive.ts",
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 24
+                }
+              }
+            }
+          ]
         }
       `)
 
@@ -288,7 +302,21 @@ describe('convertType', () => {
           {
             "__type": "SpecialTO",
             "kind": "undefined",
-            "locations": []
+            "locations": [
+              {
+                "fileName": "./src/types/special.ts",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 29
+                  }
+                }
+              }
+            ]
           }
         `)
       })
@@ -335,7 +363,21 @@ describe('convertType', () => {
         {
           "__type": "LiteralTO",
           "value": "hello",
-          "locations": []
+          "locations": [
+            {
+              "fileName": "./src/types/literal.ts",
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 27
+                }
+              }
+            }
+          ]
         }
       `)
 
@@ -417,7 +459,21 @@ describe('convertType', () => {
               "locations": []
             }
           ],
-          "locations": []
+          "locations": [
+            {
+              "fileName": "./src/types/union.ts",
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 41
+                }
+              }
+            }
+          ]
         }
       `)
     })
@@ -523,7 +579,21 @@ describe('convertType', () => {
                 }
               }
             ],
-            "locations": []
+            "locations": [
+              {
+                "fileName": "./src/types/enum.ts",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 4,
+                    "character": 1
+                  }
+                }
+              }
+            ]
           }
         `)
       })
@@ -683,7 +753,21 @@ describe('convertType', () => {
               "kind": "arrayT",
               "locations": []
             },
-            "locations": []
+            "locations": [
+              {
+                "fileName": "./src/types/array.ts",
+                "range": {
+                  "start": {
+                    "line": 0,
+                    "character": 0
+                  },
+                  "end": {
+                    "line": 0,
+                    "character": 29
+                  }
+                }
+              }
+            ]
           }
         `)
       })
@@ -1224,7 +1308,21 @@ describe('convertType', () => {
             "kind": "number",
             "locations": []
           },
-          "locations": []
+          "locations": [
+            {
+              "fileName": "./src/types/function.ts",
+              "range": {
+                "start": {
+                  "line": 0,
+                  "character": 0
+                },
+                "end": {
+                  "line": 0,
+                  "character": 42
+                }
+              }
+            }
+          ]
         }
       `)
 

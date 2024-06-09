@@ -24,9 +24,9 @@ import {
   getNodeSymbol,
   getSourceFileLocation,
   filterUndefined,
-  getDescendantAtPosition,
   isValidType,
   getSymbolType,
+  getDescendantAtRange,
 } from './util'
 
 type TypeDeclaration = { typeName: string | undefined; type: to.TypeObject }
@@ -377,14 +377,16 @@ export class CompilerApiHelper {
           return (
             getNodeSymbol(
               this.#typeChecker,
-              getDescendantAtPosition(
-                this.#ts,
-                sourceFile,
+              getDescendantAtRange(this.#ts, sourceFile, [
                 sourceFile.getPositionOfLineAndCharacter(
                   location.range.start.line,
                   location.range.start.character,
                 ),
-              ),
+                sourceFile.getPositionOfLineAndCharacter(
+                  location.range.end.line,
+                  location.range.end.character,
+                ),
+              ]),
             ) === originalSymbol
           )
         }) ?? [],
