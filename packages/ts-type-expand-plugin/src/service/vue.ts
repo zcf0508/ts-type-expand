@@ -14,8 +14,6 @@ import { logger } from '../logger.js'
 const windowsPathReg = /\\/g
 
 type VueProgram = ts.Program & {
-  // https://github.com/volarjs/volar.js/blob/v2.2.0/packages/typescript/lib/node/proxyCreateProgram.ts#L209
-  __volar__?: { language: Language }
   // https://github.com/vuejs/language-tools/blob/v2.0.16/packages/typescript-plugin/index.ts#L75
   __vue__?: { language: Language }
 }
@@ -88,12 +86,12 @@ export function getPositionOfLineAndCharacterForVue(
 
   tsProgram = ctx.program
 
-  if (!(tsProgram.__vue__ ?? tsProgram.__volar__)) {
+  if (!tsProgram.__vue__) {
     logger.info('CREATE_VUE_PROGRAM', {})
     tsProgram = createProgram(options) as VueProgram
   }
 
-  const language = (tsProgram.__volar__ ?? tsProgram.__vue__)?.language
+  const language = tsProgram.__vue__?.language
   if (language?.scripts) {
     const vFile = language.scripts.get(fileName)
     const serviceScript =
